@@ -1,12 +1,47 @@
 import random
 import time
 import numpy as np
+from itertools import product
 
 class Game():
     """docstring for ClassName"""
-    def __init__(self, player, enemy):
+    def __init__(self, player, enemy, time=2):
+        self.time = time
         self.player = player
         self.enemy = enemy
+        self.pij = self.calc_pij(time)
+        print(np.sum(self.pij))
+        print(np.sum(np.where(self.pij>0)))
+
+    def tostate(self, t, pos_p, pos_e):
+        return 900*t + 30*(pos_p[0]*6 + pos_p[1]) + pos_e[0]*6 + pos_e[1]
+
+    def fromstate(self, s):
+        T = s // 900
+        rem = s % 900
+        pos_p = rem // 30
+        y_p = pos_p // 6
+        x_p = pos_p % 6
+        rem2 = rem % 30
+        y_e = rem2 // 6
+        x_e = rem2 % 6
+        return T, [y_p, x_p], [y_e, x_e]
+    
+    def calc_pij(self, T):
+        dim = T*5*6*5*6
+        pij = np.zeros((dim,dim,len(self.player.actions)))
+        ''' Iterates through time, player_pos, enemy_pos and new_enemy_pos, because we know that new_time = time + 1 and we know new_player_pos from player.transition function.'''
+        iters = [T, 5, 6, 5, 6, 5, 6]
+        ranges = [range(x) for x in iters]
+        for t, y_p, x_p, y_e, x_e, yn_e, xn_e in product(*ranges):
+            for idx, action in enumerate(self.player.actions):
+                if t < T-1:
+                    posn_p = self.player.transition([y_p,x_p], action)
+                    prob = self.enemy.transition([y_e,x_e],[yn_e,xn_e])
+                    S = self.tostate(t,[y_p,x_p],[y_e,x_e])
+                    Sn = self.tostate(t+1, posn_p, [yn_e,xn_e])
+                    pij[S,Sn,idx] = prob
+        return pij
 
     def display_board(self):
         vis_board = np.empty((5,6), dtype='str')
@@ -26,10 +61,12 @@ class Game():
         print(' ' + '\u203e'*8 + ' ')
         time.sleep(0.3)
 
+
 class Player():
     """docstring for ClassName"""
     def __init__(self):
         self.pos = [0,0]
+        self.actions = ['U','D','L','R','S']
         self.actdict = {'U': (-1,0),
                         'D': (1,0),
                         'L': (0,-1),
@@ -62,6 +99,7 @@ class Player():
         else:
             pos_new = [y + x for y, x in zip(pos, self.actdict[action])]
         return pos_new
+
 
 class Enemy():
     """docstring  for ClassName"""
@@ -160,8 +198,9 @@ class Enemy():
 
 Gary = Player()
 Minotaur = Enemy()
+TheGame = Game(Gary, Minotaur)
 
-
+'''
 # TEST TO SEE RESULT OF ACTIONS
 for y in range(5):
     for x in range(6):
@@ -175,4 +214,5 @@ for y in range(5):
         for yn in range(5):
             for xn in range(6):
                 prob = Minotaur.transition([y,x],[yn,xn])
-                print('p{{({},{})|({},{})}} = {}'.format(yn,xn,y,x,prob))                
+                print('p{{({},{})|({},{})}} = {}'.format(yn,xn,y,x,prob))
+'''
