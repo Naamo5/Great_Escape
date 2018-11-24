@@ -42,20 +42,72 @@ class Game():
         for t, y_p, x_p, y_e, x_e, yn_e, xn_e in product(*ranges):
             for idx, action in enumerate(self.player.actions):
                 S = self.tostate(t,[y_p,x_p],[y_e,x_e])
-                if t < self.time-1:
+                if self.is_terminal(t,[y_p,x_p],[y_e,x_e]):
+                    pij[S,S,idx] = 1.0
+                else:
                     posn_p = self.player.transition([y_p,x_p], action)
                     prob = self.enemy.transition([y_e,x_e],[yn_e,xn_e])
                     Sn = self.tostate(t+1, posn_p, [yn_e,xn_e])
                     pij[S,Sn,idx] = prob
                 ''' terminal states are recursive: final time step, minotaur kills player, player escapes maze '''
-                if t == self.time-1 or \
-                   y_p == y_e and x_p == x_e or \
-                   [y_p, x_p] == self.exit_pos:
-                    pij[S,S,idx] = 1.0
+                
         return pij
 
+    def is_terminal(self, t, pos_p, pos_e):
+        return t == self.time-1 or pos_p == pos_e or pos_p == self.exit_pos
+
     def test_pij(self):
-        pass
+        # some sanity checks
+        self.print_stats()
+        is_rowsum_one = 0
+        for action in range(len(self.player.actions)):
+            rowsum = np.sum(self.pij[:,:,action],1)
+            non_zero_rows = rowsum!=1.0
+            state_list = np.arange(self.S_dim)
+            non_zero_states = state_list[non_zero_rows]
+            for S in non_zero_states:
+                self.print_error_S(action, S)
+                non_zero_states_new = state_list[self.pij[S,:,action]>0.0]
+                for Sn in non_zero_states_new:
+                    self.print_error_Sn(S, Sn, action)
+                print('')
+            if sum(rowsum) == self.pij.shape[1]:
+                is_rowsum_one += 1
+        if is_rowsum_one == len(self.player.actions):
+            print('all rows sum to 1.0 for each action :)')
+
+    def print_error_S(self, action, S):
+        t, [y_p, x_p], [y_e, x_e] = self.fromstate(S)
+        print('the following state/action row does not sum to 1.0:')
+        print('t = {}, [y_p,x_p] = [{},{}], [y_e,x_e] = [{},{}], A = {}'
+              .format(t, y_p, x_p, y_e, x_e, self.player.actions[action]))
+        print('details:')
+
+    def print_error_Sn(self, S, Sn, action):
+        tn, [yn_p, xn_p], [yn_e, xn_e] = self.fromstate(Sn)
+        print('tn = {}, [yn_p,xn_p] = [{},{}], '
+              '[yn_e,xn_e] = [{},{}], prob = {}'
+              .format(tn, yn_p, xn_p, yn_e, xn_e, self.pij[S,Sn,action]))
+
+    def print_stats(self):
+        non_zero = np.sum(self.pij[self.pij>0])
+        non_zero_frac = 1.0*non_zero/self.pij.size
+        no_terminal = np.sum(self.pij==1.0)
+        no_terminal_frac = 1.0*no_terminal/self.pij.size
+        other = non_zero - no_terminal
+        other_frac = 1.0*other/self.pij.size
+        print('no of states = {:.0f}'.format(self.S_dim))
+        print('no of actions = {:.0f}'.format(len(self.player.actions)))
+        print('no of elements = {:.0f}'.format(self.pij.size))
+        print('no of terminal elements = {:.0f}'.format(no_terminal))
+        print('fraction of terminal elements = {:.5f}'
+              .format(no_terminal_frac))
+        print('no of elements x where 0 < x < 1 = {:.0f}'.format(other))
+        print('fraction of elements x where 0 < x < 1 = {:.5f}'
+              .format(other_frac))
+        print('no of non-zero elements = {:.0f}'.format(non_zero))
+        print('fraction of non zero elements = {:.5f}\n\n'
+              .format(non_zero_frac))
 
     def calc_rewards(self):
         rewards = np.ones(self.S_dim)*self.r_not_escaped
@@ -93,8 +145,8 @@ class Game():
         print('|{}{}|{}{}|{}{}|'.format(*vis_board[1,:]))
         print('|{}{}|{}{}|{}\u0305{}\u0305|'.format(*vis_board[2,:]))
         print('|{}{} {}{} {}{}|'.format(*vis_board[3,:]))
-        print('|{}{}\u203e{}\u0305{}\u0305|\u0305{}\u0305{}\u0305|'.format(
-            *vis_board[4,:]))
+        print('|{}{}\u203e{}\u0305{}\u0305|\u0305{}\u0305{}\u0305|'
+              .format(*vis_board[4,:]))
         print(' ' + '\u203e'*8 + ' ')
         time.sleep(0.3)
 
@@ -250,3 +302,4 @@ class Enemy():
 Gary = Player()
 Minotaur = Enemy()
 TheGame = Game(Gary, Minotaur)
+TheGame.test_pij()
