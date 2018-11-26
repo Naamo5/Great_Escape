@@ -240,16 +240,12 @@ class Ex2Enemy():
 
 class GameBase():
     """docstring for ClassName"""
-    def __init__(self, time=None, can_same=False, lamb=1.0):
-        self.time = time
+    def __init__(self, can_same=False, lamb=1.0):
         self.can_same = can_same
         self.lamb = lamb # lambda, the discount factor
 
     def init_2(self):
-        if self.time:
-            self.S_dim = self.time*((self.W*self.H)**2) # state dimension
-        else:
-            self.S_dim = (self.W*self.H)**2
+        self.S_dim = (self.W*self.H)**2
         self.init_v = np.zeros(self.S_dim) # initial state values
         self.init_p = np.ones((self.S_dim,len(self.player.actions))) * \
                       1.0/len(self.player.actions) # initial policy
@@ -257,25 +253,18 @@ class GameBase():
         self.calc_rewards()
         self.lambvec = np.ones(self.S_dim)*self.lamb
 
-    def tostate(self, pos_p, pos_e, t=None):
-        if t:
-            return ((self.H*self.W)**2)*t + \
-                   self.H*self.W*(pos_p[0]*self.W + pos_p[1]) + \
-                   pos_e[0]*self.W + pos_e[1]
-        else:
-            return self.H*self.W*(pos_p[0]*self.W + pos_p[1]) + \
-                   pos_e[0]*self.W + pos_e[1]
+    def tostate(self, pos_p, pos_e):
+        return self.H*self.W*(pos_p[0]*self.W + pos_p[1]) + \
+               pos_e[0]*self.W + pos_e[1]
 
     def fromstate(self, s):
-        t = s // ((self.H*self.W)**2)
-        rem = s % ((self.H*self.W)**2)
-        pos_p = rem // (self.H*self.W)
+        pos_p = s // (self.H*self.W)
+        pos_e = s % (self.H*self.W)
         y_p = pos_p // self.W
         x_p = pos_p % self.W
-        rem2 = rem % (self.H*self.W)
-        y_e = rem2 // self.W
-        x_e = rem2 % self.W
-        return t, [y_p, x_p], [y_e, x_e]
+        y_e = pos_e // self.W
+        x_e = pos_e % self.W
+        return [y_p, x_p], [y_e, x_e]
 
     def test_pij(self):
         # some sanity checks
@@ -299,25 +288,23 @@ class GameBase():
 
 
     def test_rewards(self):
-        t = self.time if self.time else 1
-        iters = [t, self.W, self.H, self.W, self.H]
+        iters = [self.W, self.H, self.W, self.H]
         ranges = [range(x) for x in iters]
-        for t, y_p, x_p, y_e, x_e in product(*ranges):
-            S = self.tostate([y_p,x_p],[y_e,x_e],t)
-            print('t = {}, player = [{},{}], enemy = [{},{}], reward = {}'
-                  .format(t, y_p, x_p, y_e, x_e, self.rewards[S]))
+        for y_p, x_p, y_e, x_e in product(*ranges):
+            S = self.tostate([y_p,x_p],[y_e,x_e])
+            print('player = [{},{}], enemy = [{},{}], reward = {}'
+                  .format(y_p, x_p, y_e, x_e, self.rewards[S]))
 
     def print_error_S(self, action, S):
-        t, [y_p, x_p], [y_e, x_e] = self.fromstate(S)
+        [y_p, x_p], [y_e, x_e] = self.fromstate(S)
         print('the following state/action row does not sum to 1.0:')
-        print('t = {}, [y_p,x_p] = [{},{}], [y_e,x_e] = [{},{}], A = {}'
-              .format(t, y_p, x_p, y_e, x_e, self.player.actions[action]))
+        print('[y_p,x_p] = [{},{}], [y_e,x_e] = [{},{}], A = {}'
+              .format(y_p, x_p, y_e, x_e, self.player.actions[action]))
         print('details:')
 
     def print_error_Sn(self, S, Sn, action):
-        tn, [yn_p, xn_p], [yn_e, xn_e] = self.fromstate(Sn)
-        print('tn = {}, [yn_p,xn_p] = [{},{}], '
-              '[yn_e,xn_e] = [{},{}], prob = {}'
+        [yn_p, xn_p], [yn_e, xn_e] = self.fromstate(Sn)
+        print('[yn_p,xn_p] = [{},{}], [yn_e,xn_e] = [{},{}], prob = {}'
               .format(tn, yn_p, xn_p, yn_e, xn_e, self.pij[S,Sn,action]))
 
     def print_stats(self):
@@ -359,38 +346,37 @@ class Ex1Game(GameBase):
     def calc_pij(self):
         pij = np.zeros((self.S_dim,self.S_dim,len(self.player.actions)),
                        dtype=np.float32)
-        ''' Iterates through time, player_pos, enemy_pos and new_enemy_pos, because we know that new_time = time + 1 and we know new_player_pos from player.transition function.'''
-        iters = [self.time, self.H, self.W, self.H, self.W, self.H, self.W]
+        ''' Iterates through player_pos, enemy_pos and new_enemy_pos, because we know new_player_pos from player.transition function.'''
+        iters = [self.H, self.W, self.H, self.W, self.H, self.W]
         ranges = [range(x) for x in iters]
-        for t, y_p, x_p, y_e, x_e, yn_e, xn_e in product(*ranges):
+        for y_p, x_p, y_e, x_e, yn_e, xn_e in product(*ranges):
             for idx, action in enumerate(self.player.actions):
-                S = self.tostate([y_p,x_p],[y_e,x_e],t)
-                if self.is_terminal([y_p,x_p],[y_e,x_e],t):
+                S = self.tostate([y_p,x_p],[y_e,x_e])
+                if self.is_terminal([y_p,x_p],[y_e,x_e]):
                     pij[S,S,idx] = 1.0
                 else:
                     posn_p = self.player.transition([y_p,x_p], action, 
                                                     self.H, self.W)
                     prob = self.enemy.transition([y_e,x_e],[yn_e,xn_e],
                                                  self.H, self.W)
-                    Sn = self.tostate(posn_p, [yn_e,xn_e], t+1)
+                    Sn = self.tostate(posn_p, [yn_e,xn_e])
                     pij[S,Sn,idx] = prob
-                ''' terminal states are recursive: final time step, minotaur kills player, player escapes maze '''
+                ''' terminal states are recursive: minotaur kills player, player escapes maze '''
         self.pij = pij
 
-    def is_terminal(self, pos_p, pos_e, t):
-        return t == self.time-1 or pos_p == pos_e or pos_p == self.exit_pos
+    def is_terminal(self, pos_p, pos_e):
+        return pos_p == pos_e or pos_p == self.exit_pos
 
     def calc_rewards(self):
         rewards = np.ones(self.S_dim)*self.r_not_escaped
-        iters = [self.time, self.H, self.W, self.H, self.W]
+        iters = [self.H, self.W, self.H, self.W]
         ranges = [range(x) for x in iters]
-        for t, y_p, x_p, y_e, x_e in product(*ranges):
-            S = self.tostate([y_p,x_p],[y_e,x_e],t)
-            if t == self.time-1 or \
-               y_p == y_e and x_p == x_e:
-                rewards[S] = self.r_eaten
+        for y_p, x_p, y_e, x_e in product(*ranges):
+            S = self.tostate([y_p,x_p],[y_e,x_e])
             if [y_p, x_p] == self.exit_pos:
                 rewards[S] = self.r_escaped
+            if [y_p, x_p] == [y_e, x_e]:
+                rewards[S] = self.r_eaten
         self.rewards = rewards
 
     def display_board(self):
@@ -552,15 +538,16 @@ class Ex3Game(GameBase):
         print(' ' + '\u203e'*4 + ' ')
         time.sleep(0.3)
 
-MazeEscape = Ex1Game(1)
+MazeEscape = Ex1Game()
 MazeEscape.test_pij()
 
+'''
 BankRob = Ex2Game()
 BankRob.test_pij()
 
 BankRob2 = Ex3Game()
 BankRob2.test_pij()
-
+'''
 '''
 def Ex1():
     maxtime = 19 # highest time we wish to find policy for
