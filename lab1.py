@@ -278,6 +278,8 @@ class GameBase():
             for S in non_zero_states:
                 self.print_error_S(action, S)
                 non_zero_states_new = state_list[self.pij[S,:,action]>0.0]
+                if len(non_zero_states_new) == 0:
+                    print('prob = 0.0 for all S\'')
                 for Sn in non_zero_states_new:
                     self.print_error_Sn(S, Sn, action)
                 print('')
@@ -550,11 +552,9 @@ class Ex3Game(GameBase):
         print(' ' + '\u203e'*4 + ' ')
         time.sleep(0.3)
 
-'''
+
 BankRob = Ex2Game()
 BankRob.test_pij()
-BankRob.test_rewards()
-'''
 
 '''
 def Ex1():
