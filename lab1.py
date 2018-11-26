@@ -304,7 +304,8 @@ class GameBase():
         ranges = [range(x) for x in iters]
         for t, y_p, x_p, y_e, x_e in product(*ranges):
             S = self.tostate([y_p,x_p],[y_e,x_e],t)
-            print('t = {}, player = [{},{}], enemy = [{},{}], reward = {}'.format(t, y_p, x_p, y_e, x_e, self.rewards[S]))
+            print('t = {}, player = [{},{}], enemy = [{},{}], reward = {}'
+                  .format(t, y_p, x_p, y_e, x_e, self.rewards[S]))
 
     def print_error_S(self, action, S):
         t, [y_p, x_p], [y_e, x_e] = self.fromstate(S)
@@ -417,11 +418,51 @@ class Ex2Game(GameBase):
         super(Ex2Game, self).__init__(*args, **kwargs)
         self.player = PlayerBase()
         self.enemy = Ex2Enemy()
-        self.H, self.W = 4, 4
+        self.H, self.W = 3, 6
         self.bank_pos = [[0,0],[2,0],[0,5],[2,5]]
         self.r_bank = 10.0
         self.r_caught = -50.0
         self.init_2()
+
+    def is_bank(self, pos_p, pos_e):
+        if pos_p in self.bank_pos and pos_p != pos_e:
+            return True
+        else:
+            return False
+
+    def is_caught(self, pos_p, pos_e):
+        return True if pos_p == pos_e else False
+
+    def calc_pij(self):
+        pij = np.zeros((self.S_dim,self.S_dim,len(self.player.actions)),
+                       dtype=np.float32)
+        iters = [self.H, self.W, self.H, self.W, self.H, self.W]
+        ranges = [range(x) for x in iters]
+        for y_p, x_p, y_e, x_e, yn_e, xn_e in product(*ranges):
+            for idx, action in enumerate(self.player.actions):
+                S = self.tostate([y_p,x_p],[y_e,x_e])
+                if self.is_caught([y_p,x_p],[y_e,x_e]):
+                    pij[S,S,idx] = 1.0
+                else:
+                    posn_p = self.player.transition([y_p,x_p], action, 
+                                                    self.H, self.W)
+                    prob = self.enemy.transition([y_e,x_e], [yn_e,xn_e], 
+                                                 [y_p,x_p], self.H, self.W)
+                    Sn = self.tostate(posn_p, [yn_e,xn_e])
+                    pij[S,Sn,idx] = prob
+        self.pij = pij
+
+    def calc_rewards(self):
+        rewards = np.zeros(self.S_dim)
+        iters = [self.H, self.W, self.H, self.W]
+        ranges = [range(x) for x in iters]
+        for y_p, x_p, y_e, x_e in product(*ranges):
+            S = self.tostate([y_p,x_p],[y_e,x_e])
+            if self.is_bank([y_p,x_p],[y_e,x_e]):
+                rewards[S] = self.r_bank
+            elif self.is_caught([y_p,x_p],[y_e,x_e]):
+                rewards[S] = self.r_caught
+        self.rewards = rewards
 
     def display_board(self):
         vis_board = np.empty((self.H,self.W), dtype='str')
@@ -455,7 +496,7 @@ class Ex3Game(GameBase):
         self.init_2()
 
     def is_bank(self, pos_p, pos_e):
-        if pos_p == self.bank_pos and pos_p != self.bank_pos:
+        if pos_p == self.bank_pos and pos_p != pos_e:
             return True
         else:
             return False
@@ -513,6 +554,9 @@ class Ex3Game(GameBase):
 
 MazeEscape = Ex1Game(1)
 MazeEscape.test_pij()
+
+BankRob = Ex2Game()
+BankRob.test_pij()
 
 BankRob2 = Ex3Game()
 BankRob2.test_pij()
