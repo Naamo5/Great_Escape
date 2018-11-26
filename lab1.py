@@ -288,12 +288,14 @@ class GameBase():
 
 
     def test_rewards(self):
-        iters = [self.W, self.H, self.W, self.H]
+        iters = [self.H, self.W, self.H, self.W]
         ranges = [range(x) for x in iters]
         for y_p, x_p, y_e, x_e in product(*ranges):
-            S = self.tostate([y_p,x_p],[y_e,x_e])
-            print('player = [{},{}], enemy = [{},{}], reward = {}'
-                  .format(y_p, x_p, y_e, x_e, self.rewards[S]))
+            for idx, action in enumerate(self.player.actions):
+                S = self.tostate([y_p,x_p],[y_e,x_e])
+                print('player = [{},{}], enemy = [{},{}], '
+                      'action = {}, reward = {}'
+                      .format(y_p, x_p, y_e, x_e, action, self.rewards[S,idx]))
 
     def print_error_S(self, action, S):
         [y_p, x_p], [y_e, x_e] = self.fromstate(S)
@@ -342,6 +344,9 @@ class Ex1Game(GameBase):
         self.r_eaten = -1000.0
         self.r_escaped = 0.0
         self.init_2()
+
+    def is_terminal(self, pos_p, pos_e):
+        return pos_p == pos_e or pos_p == self.exit_pos
     
     def calc_pij(self):
         pij = np.zeros((self.S_dim,self.S_dim,len(self.player.actions)),
@@ -364,19 +369,20 @@ class Ex1Game(GameBase):
                 ''' terminal states are recursive: minotaur kills player, player escapes maze '''
         self.pij = pij
 
-    def is_terminal(self, pos_p, pos_e):
-        return pos_p == pos_e or pos_p == self.exit_pos
-
     def calc_rewards(self):
-        rewards = np.ones(self.S_dim)*self.r_not_escaped
+        rewards = np.ones((self.S_dim,len(self.player.actions))) * \
+                  self.r_not_escaped
         iters = [self.H, self.W, self.H, self.W]
         ranges = [range(x) for x in iters]
         for y_p, x_p, y_e, x_e in product(*ranges):
-            S = self.tostate([y_p,x_p],[y_e,x_e])
-            if [y_p, x_p] == self.exit_pos:
-                rewards[S] = self.r_escaped
-            if [y_p, x_p] == [y_e, x_e]:
-                rewards[S] = self.r_eaten
+            for idx, action in enumerate(self.player.actions):
+                S = self.tostate([y_p,x_p],[y_e,x_e])
+                posn_p = self.player.transition([y_p,x_p], action, 
+                                                    self.H, self.W)
+                if posn_p == self.exit_pos:
+                    rewards[S, idx] = self.r_escaped
+                if posn_p == [y_e, x_e]:
+                    rewards[S, idx] = self.r_eaten
         self.rewards = rewards
 
     def display_board(self):
@@ -439,15 +445,18 @@ class Ex2Game(GameBase):
         self.pij = pij
 
     def calc_rewards(self):
-        rewards = np.zeros(self.S_dim)
+        rewards = np.zeros((self.S_dim,len(self.player.actions)))
         iters = [self.H, self.W, self.H, self.W]
         ranges = [range(x) for x in iters]
         for y_p, x_p, y_e, x_e in product(*ranges):
-            S = self.tostate([y_p,x_p],[y_e,x_e])
-            if self.is_bank([y_p,x_p],[y_e,x_e]):
-                rewards[S] = self.r_bank
-            elif self.is_caught([y_p,x_p],[y_e,x_e]):
-                rewards[S] = self.r_caught
+            for idx, action in enumerate(self.player.actions):
+                S = self.tostate([y_p,x_p],[y_e,x_e])
+                posn_p = self.player.transition([y_p,x_p], action, 
+                                                    self.H, self.W)
+                if self.is_bank(posn_p,[y_e,x_e]):
+                    rewards[S, idx] = self.r_bank
+                elif self.is_caught(posn_p,[y_e,x_e]):
+                    rewards[S, idx] = self.r_caught
         self.rewards = rewards
 
     def display_board(self):
@@ -510,15 +519,18 @@ class Ex3Game(GameBase):
         self.pij = pij
 
     def calc_rewards(self):
-        rewards = np.zeros(self.S_dim)
+        rewards = np.zeros((self.S_dim,len(self.player.actions)))
         iters = [self.H, self.W, self.H, self.W]
         ranges = [range(x) for x in iters]
         for y_p, x_p, y_e, x_e in product(*ranges):
-            S = self.tostate([y_p,x_p],[y_e,x_e])
-            if self.is_bank([y_p,x_p],[y_e,x_e]):
-                rewards[S] = self.r_bank
-            elif self.is_caught([y_p,x_p],[y_e,x_e]):
-                rewards[S] = self.r_caught
+            for idx, action in enumerate(self.player.actions):
+                S = self.tostate([y_p,x_p],[y_e,x_e])
+                posn_p = self.player.transition([y_p,x_p], action, 
+                                                    self.H, self.W)
+                if self.is_bank(posn_p,[y_e,x_e]):
+                    rewards[S, idx] = self.r_bank
+                elif self.is_caught(posn_p,[y_e,x_e]):
+                    rewards[S, idx] = self.r_caught
         self.rewards = rewards
 
     def display_board(self):
@@ -538,16 +550,12 @@ class Ex3Game(GameBase):
         print(' ' + '\u203e'*4 + ' ')
         time.sleep(0.3)
 
-MazeEscape = Ex1Game()
-MazeEscape.test_pij()
-
 '''
 BankRob = Ex2Game()
 BankRob.test_pij()
-
-BankRob2 = Ex3Game()
-BankRob2.test_pij()
+BankRob.test_rewards()
 '''
+
 '''
 def Ex1():
     maxtime = 19 # highest time we wish to find policy for
