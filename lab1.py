@@ -5,80 +5,78 @@ from itertools import product
 
 class Game():
     """docstring for ClassName"""
-    def __init__(self, player, enemy, time=2):
-        self.time = time
+    def __init__(self, player, enemy):
         self.player = player
         self.enemy = enemy
         self.exit_pos = [4,4]
-        self.S_dim = self.time*5*6*5*6 # state dimension
+        self.S_dim = 5*6*5*6+2 # state dimension all combinaison of position + eaten + escaped
         self.init_v = np.zeros(self.S_dim) # initial state values
-        self.init_p = np.ones((self.S_dim,len(self.player.actions))) * \
-                      1.0/len(self.player.actions) # initial policy
-        self.r_not_escaped = -1.0
-        self.r_eaten = -1000.0
-        self.r_escaped = 0.0
+        self.r_not_escaped = 0.0
+        self.r_eaten = -2
+        self.r_escaped = 1.0
         self.pij = self.calc_pij()
         self.rewards = self.calc_rewards()
 
-    def tostate(self, t, pos_p, pos_e):
-        return 900*t + 30*(pos_p[0]*6 + pos_p[1]) + pos_e[0]*6 + pos_e[1]
+    def tostate(self, pos_p, pos_e):
+        return 30*(pos_p[0]*6 + pos_p[1]) + pos_e[0]*6 + pos_e[1]
 
     def fromstate(self, s):
-        T = s // 900
-        rem = s % 900
-        pos_p = rem // 30
-        y_p = pos_p // 6
-        x_p = pos_p % 6
-        rem2 = rem % 30
-        y_e = rem2 // 6
-        x_e = rem2 % 6
-        return T, [y_p, x_p], [y_e, x_e]
-    
+        if s<self.S_dim-2:
+            pos_p = s // 30
+            y_p = pos_p // 6
+            x_p = pos_p % 6
+            rem = s % 30
+            y_e = rem // 6
+            x_e = rem % 6
+            ret = [y_p, x_p], [y_e, x_e]
+        else:
+            ret = s
+        return ret
+
     def calc_pij(self):
         pij = np.zeros((self.S_dim,self.S_dim,len(self.player.actions)))
-        ''' Iterates through time, player_pos, enemy_pos and new_enemy_pos, because we know that new_time = time + 1 and we know new_player_pos from player.transition function.'''
-        iters = [self.time, 5, 6, 5, 6, 5, 6]
+        ''' Iterates through player_pos, enemy_pos and new_enemy_pos'''
+        iters = [5, 6, 5, 6, 5, 6]
         ranges = [range(x) for x in iters]
-        for t, y_p, x_p, y_e, x_e, yn_e, xn_e in product(*ranges):
+        for y_p, x_p, y_e, x_e, yn_e, xn_e in product(*ranges):
             for idx, action in enumerate(self.player.actions):
-                S = self.tostate(t,[y_p,x_p],[y_e,x_e])
-                if t < self.time-1:
-                    posn_p = self.player.transition([y_p,x_p], action)
-                    prob = self.enemy.transition([y_e,x_e],[yn_e,xn_e])
-                    Sn = self.tostate(t+1, posn_p, [yn_e,xn_e])
-                    pij[S,Sn,idx] = prob
+                S = self.tostate([y_p,x_p],[y_e,x_e])
+                posn_p = self.player.transition([y_p,x_p], action)
+                prob = self.enemy.transition([y_e,x_e],[yn_e,xn_e])
+                Sn = self.tostate(posn_p, [yn_e,xn_e])
+                pij[S,Sn,idx] = prob
                 ''' terminal states are recursive: final time step, minotaur kills player, player escapes maze '''
-                if t == self.time-1 or \
-                   y_p == y_e and x_p == x_e or \
-                   [y_p, x_p] == self.exit_pos:
-                    pij[S,S,idx] = 1.0
+                if y_p == y_e and x_p == x_e:
+                    pij[S,self.S_dim-2,idx] = 1.0
+                elif [y_p, x_p] == self.exit_pos and action == 'S':
+                    pij[S,self.S_dim-1,idx] = 1.0
+        """ When the player is already eaten or already escaped, whatever he does, he will stay in the same state"""
+        for idx, action in enumerate(self.player.actions):
+            #When he was eaten
+            pij[self.S_dim-2,self.S_dim-2,idx] = 1.0
+            #When he escaped
+            pij[self.S_dim-1,self.S_dim-1,idx] = 1.0
         return pij
 
-    def test_pij(self):
-        pass
-
     def calc_rewards(self):
-        rewards = np.ones(self.S_dim)*self.r_not_escaped
-        iters = [self.time, 5, 6, 5, 6]
-        ranges = [range(x) for x in iters]
-        for t, y_p, x_p, y_e, x_e in product(*ranges):
-            S = self.tostate(t,[y_p,x_p],[y_e,x_e])
-            if t == self.time-1 or \
-               y_p == y_e and x_p == x_e:
-                rewards[S] = self.r_eaten
+        rewards = np.zeros((self.S_dim, self.player.A_dim))
+        for s in range(self.S_dim-2):
+            [y_p,x_p],[y_e,x_e] = self.fromstate(s)
             if [y_p, x_p] == self.exit_pos:
-                rewards[S] = self.r_escaped
+                rewards[s, -1] = self.r_escaped
+            if y_p == y_e and x_p == x_e:
+                rewards[s] = [self.r_eaten]*self.player.A_dim
         return rewards
 
     def test_rewards(self):
-        iters = [self.time, 5, 6, 5, 6]
-        ranges = [range(x) for x in iters]
-        for t, y_p, x_p, y_e, x_e in product(*ranges):
-            S = self.tostate(t,[y_p,x_p],[y_e,x_e])
-            print('t = {}, player = [{},{}], minotaur = [{},{}], reward = {}'.format(t, y_p, x_p, y_e, x_e, self.rewards[S]))
-
-    def find_optimal(self):
-        pass
+        for S in range(self.S_dim):
+            if S < self.S_dim-2:
+                [y_p, x_p], [y_e, x_e] = self.fromstate(S)
+                print('player = [{},{}], minotaur = [{},{}], reward = {}'.format(y_p, x_p, y_e, x_e, self.rewards[S]))
+            elif S == self.S_dim-2:
+                print('Eaten, reward = {}'.format(self.rewards[S]))
+            else:
+                print('Escaped, reward = {}'.format(self.rewards[S]))
 
     def display_board(self):
         vis_board = np.empty((5,6), dtype='str')
@@ -96,7 +94,47 @@ class Game():
         print('|{}{}\u203e{}\u0305{}\u0305|\u0305{}\u0305{}\u0305|'.format(
             *vis_board[4,:]))
         print(' ' + '\u203e'*8 + ' ')
-        time.sleep(0.3)
+        time.sleep(0.5)
+
+    def BW_induction(self, time):
+        """ Back ward induction algorithm for a finite horizon MDP problem """
+        u2 = np.zeros((self.S_dim, time))
+        """ Setting of the last colomn (for final time) of the value function  """
+        u2[:,time-1] = [np.max([self.rewards[s,a] for a in range(self.player.A_dim)]) for s in range(self.S_dim)]
+        """ The initial policy is to Stay """
+        policy = 4*np.ones((self.S_dim, time))
+        """ Iterates through time, state and action """
+        for t in range(1,time):
+            """ Starting from T-1 to 0 """
+            print(time-1-t)
+            u1 = np.zeros(self.S_dim)
+            for s1 in range(self.S_dim):
+                u_temp = np.zeros(self.player.A_dim)
+                for a in range(self.player.A_dim):
+                    u_temp[a] = sum([self.pij[s1,s2,a] * (self.rewards[s1,a] + u2[s2,time-t]) for s2 in range(self.S_dim)])
+                u1[s1] = max(u_temp) #value function for s1 at time-1-t
+                policy[s1,time-1-t] = np.argmax(u_temp) #optimal policy for s1 at time-1-t
+            u2[:,time-1-t] = np.copy(u1)
+        return policy,u2
+ 
+    def opt_policy(self,policy, min_pos):
+        """ Find the optimal policy for a given set of minautor positions """
+        time = len(policy[0])
+        actions = [0]*15
+        self.enemy.pos = min_pos[0]
+        self.player.pos = [0,0]
+        actions[0] = policy[self.tostate(self.player.pos, self.player.pos),0]
+        self.display_board()
+        for t in range(0,time-1):
+            self.enemy.pos = min_pos[t+1]
+            self.player.pos = self.player.transition(self.player.pos,self.player.actions[int(actions[t])])
+            actions[t+1] = policy[self.tostate(self.player.pos, self.enemy.pos),t+1]
+            self.display_board()
+        return actions
+    
+    def proba(self, T):
+        pass
+
 
 
 class Player():
@@ -104,6 +142,7 @@ class Player():
     def __init__(self):
         self.pos = [0,0]
         self.actions = ['U','D','L','R','S']
+        self.A_dim = len(self.actions)
         self.actdict = {'U': (-1,0),
                         'D': (1,0),
                         'L': (0,-1),
@@ -250,3 +289,9 @@ class Enemy():
 Gary = Player()
 Minotaur = Enemy()
 TheGame = Game(Gary, Minotaur)
+
+
+opt_policies, u2 = TheGame.BW_induction(15)
+minautor_pos = [[4,4], [4,3], [3,3], [3,2], [3,1],[3,2], [3,1],[3,2], [3,1],[3,2], [3,1],[3,2], [3,1],[3,2], [3,1],[3,2], [3,1],[3,2], [3,1]]
+
+actions = TheGame.opt_policy(opt_policies, minautor_pos)
