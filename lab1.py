@@ -396,32 +396,31 @@ class Ex1Game(GameBase):
                     rewards[S, idx] = self.r_eaten
         self.rewards = rewards
 
-    def get_optimal2(self, time):
+    def get_optimal(self, time):
         """ Back ward induction algorithm for a finite horizon MDP problem """
-        u2 = np.zeros((self.S_dim, time))
+        u2 = np.zeros((self.S_dim, time+1))
         """ Setting of the last colomn (for final time) of the value function  """
-        u2[:,time-1] = np.max(self.rewards,1)
-        """ The initial policy is to Stay """
-        policy = 4*np.ones((self.S_dim, time),dtype=np.int32)
+        u2[:,time] = np.ones(self.S_dim)*self.r_not_escaped
+        policy = np.zeros((self.S_dim, time),dtype=np.int32)
         """ Iterates through time, state and action """
-        for t in reversed(range(time-1)):
+        for t in reversed(range(time)):
             """ Starting from T-1 to 0 """
-            print(t)
             u1 = np.zeros(self.S_dim)
             for s1 in range(self.S_dim):
                 u_temp = np.zeros(len(self.player.actions))
                 for a in range(len(self.player.actions)):
-                    u_temp[a] = sum([(self.pij[s1,s2,a] * u2[s2,t+1]) + self.rewards[s1,a] for s2 in range(self.S_dim)])
+                    u_temp[a] = np.sum(self.pij[s1,:,a] * u2[:,t+1]) + self.rewards[s1,a]
                 u1[s1] = max(u_temp) #value function for s1 at time-1-t
                 policy[s1,t] = np.argmax(u_temp) #optimal policy for s1 at time-1-t
             u2[:,t] = np.copy(u1)
+        self.v_opt = u2
         self.p_opt = policy
 
-    def get_optimal(self, T):
+    def get_optimal2(self, T):
         p_opt = np.zeros((self.S_dim, T),dtype=np.int32) # optimal policy
-        v_opt = np.zeros((self.S_dim, T)) # optimal value
-        v_opt[:,T-1] = np.max(self.rewards,1) # value for final time
-        for t in reversed(range(T-1)):
+        v_opt = np.zeros((self.S_dim, T+1)) # optimal value
+        v_opt[:,T] = np.ones(self.S_dim)*self.r_not_escaped
+        for t in reversed(range(T)):
             max_val = np.zeros((self.S_dim, len(self.player.actions)))
             for action in range(len(self.player.actions)):
                 # Pij*S for all S and Action=a
@@ -431,6 +430,7 @@ class Ex1Game(GameBase):
             v_optn_a = max_val + self.rewards
             v_opt[:,t] = np.max(v_optn_a,1)
             p_opt[:,t] = np.argmax(v_optn_a,1)
+        print(v_opt)
         self.v_opt = v_opt
         self.p_opt = p_opt
 
@@ -615,16 +615,20 @@ class Ex3Game(GameBase):
 
 T = 15
 MazeEscape = Ex1Game(True)
-MazeEscape.test_pij()
 MazeEscape.get_optimal(T)
 MazeEscape.simulate(T)
 
 '''
 def Ex1():
-    maxtime = 19 # highest time we wish to find policy for
-    for time in range(10, maxtime): # impossible to win for t < 10
-        for can_same in [True, False]:
+    maxtime = 30 # highest time we wish to find policy for
+    no_sims = 1000
+    for can_same in [True, False]:
+        for time in range(10, maxtime): # impossible to win for t < 10
             MazeEscape = Ex1Game(time, can_same)
-            MazeEscape.test_pij()
-            MazeEscape.find_optimal()
+            MazeEscape.get_optimal()
+            escaped = 0.0
+            for sim in range(no_sims):
+                escaped += MazeEscape.get_simulate(time)
+            print('can_same = {}, time = {}, success = {}'
+                  .format(can_same, time, escaped/no_sims))
 '''
