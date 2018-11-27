@@ -12,8 +12,8 @@ class Game():
         self.S_dim = 5*6*5*6+2 # state dimension all combinaison of position + eaten + escaped
         self.init_v = np.zeros(self.S_dim) # initial state values
         self.r_not_escaped = 0.0
-        self.r_eaten = -2
-        self.r_escaped = 1.0
+        self.r_eaten = -1.0
+        self.r_escaped = 2.0
         self.pij = self.calc_pij()
         self.rewards = self.calc_rewards()
 
@@ -48,7 +48,7 @@ class Game():
                 ''' terminal states are recursive: final time step, minotaur kills player, player escapes maze '''
                 if y_p == y_e and x_p == x_e:
                     pij[S,self.S_dim-2,idx] = 1.0
-                elif [y_p, x_p] == self.exit_pos and action == 'S':
+                elif [y_p, x_p] == self.exit_pos:
                     pij[S,self.S_dim-1,idx] = 1.0
         """ When the player is already eaten or already escaped, whatever he does, he will stay in the same state"""
         for idx, action in enumerate(self.player.actions):
@@ -63,7 +63,7 @@ class Game():
         for s in range(self.S_dim-2):
             [y_p,x_p],[y_e,x_e] = self.fromstate(s)
             if [y_p, x_p] == self.exit_pos:
-                rewards[s, -1] = self.r_escaped
+                rewards[s,:] = self.r_escaped
             if y_p == y_e and x_p == x_e:
                 rewards[s] = [self.r_eaten]*self.player.A_dim
         return rewards
@@ -94,7 +94,7 @@ class Game():
         print('|{}{}\u203e{}\u0305{}\u0305|\u0305{}\u0305{}\u0305|'.format(
             *vis_board[4,:]))
         print(' ' + '\u203e'*8 + ' ')
-        time.sleep(0.5)
+        time.sleep(0.2)
 
     def BW_induction(self, time):
         """ Back ward induction algorithm for a finite horizon MDP problem """
@@ -120,7 +120,7 @@ class Game():
     def opt_policy(self,policy, min_pos):
         """ Find the optimal policy for a given set of minautor positions """
         time = len(policy[0])
-        actions = [0]*15
+        actions = [0]*time
         self.enemy.pos = min_pos[0]
         self.player.pos = [0,0]
         actions[0] = policy[self.tostate(self.player.pos, self.player.pos),0]
@@ -212,73 +212,96 @@ class Enemy():
             if (yn == (y + 1) and xn == x) or \
                (yn == (y - 1) and xn == x) or \
                (yn == y and xn == (x + 1)):
-                prob = 1.0/(4 + self.can_same)
+                prob = 1.0/(3 + self.can_same)
             elif (yn == y and xn == x):
-                prob = (1.0 + self.can_same)/(4 + self.can_same)
+                prob = self.can_same/(3 + self.can_same)
             else:
                 prob = 0.0
         elif x == 5 and y > 0 and y < 4:
             if (yn == (y + 1) and xn == x) or \
                (yn == (y - 1) and xn == x) or \
                (yn == y and xn == (x - 1)):
-                prob = 1.0/(4 + self.can_same)
+                prob = 1.0/(3 + self.can_same)
             elif (yn == y and xn == x):
-                prob = (1.0 + self.can_same)/(4 + self.can_same)
+                prob = self.can_same/(3 + self.can_same)
             else:
                 prob = 0.0
         elif y == 0 and x > 0 and x < 5:
             if (yn == (y + 1) and xn == x) or \
                (yn == y and xn == (x - 1)) or \
                (yn == y and xn == (x + 1)):
-                prob = 1.0/(4 + self.can_same)
+                prob = 1.0/(3 + self.can_same)
             elif (yn == y and xn == x):
-                prob = (1.0 + self.can_same)/(4 + self.can_same)
+                prob = self.can_same/(3 + self.can_same)
             else:
                 prob = 0.0
         elif y == 4 and x > 0 and x < 5:
             if (yn == (y - 1) and xn == x) or \
                (yn == y and xn == (x - 1)) or \
                (yn == y and xn == (x + 1)):
-                prob = 1.0/(4 + self.can_same)
+                prob = 1.0/(3 + self.can_same)
             elif (yn == y and xn == x):
-                prob = (1.0 + self.can_same)/(4 + self.can_same)
+                prob = self.can_same/(3 + self.can_same)
             else:
                 prob = 0.0
         # CORNER POSITIONS
         elif y==0 and x==0:
             if (yn == (y + 1) and xn == x) or \
                (yn == y and xn == (x + 1)):
-                prob = 1.0/(4 + self.can_same)
+                prob = 1.0/(2 + self.can_same)
             elif (yn == y and xn == x):
-                prob = (2.0 + self.can_same)/(4 + self.can_same)
+                prob = self.can_same/(2 + self.can_same)
             else:
                 prob = 0.0
         elif y==4 and x==0:
             if (yn == (y - 1) and xn == x) or \
                (yn == y and xn == (x + 1)):
-                prob = 1.0/(4 + self.can_same)
+                prob = 1.0/(2 + self.can_same)
             elif (yn == y and xn == x):
-                prob = (2.0 + self.can_same)/(4 + self.can_same)
+                prob = self.can_same/(2 + self.can_same)
             else:
                 prob = 0.0
         elif y==0 and x==5:
             if (yn == (y + 1) and xn == x) or \
                (yn == y and xn == (x - 1)):
-                prob = 1.0/(4 + self.can_same)
+                prob = 1.0/(2 + self.can_same)
             elif (yn == y and xn == x):
-                prob = (2.0 + self.can_same)/(4 + self.can_same)
+                prob = self.can_same/(2 + self.can_same)
             else:
                 prob = 0.0
         elif y==4 and x==5:
             if (yn == (y - 1) and xn == x) or \
                (yn == y and xn == (x - 1)):
-                prob = 1.0/(4 + self.can_same)
+                prob = 1.0/(2 + self.can_same)
             elif (yn == y and xn == x):
-                prob = (2.0 + self.can_same)/(4 + self.can_same)
+                prob = self.can_same/(2 + self.can_same)
             else:
                 prob = 0.0
         return prob
+    
+    def neighbors_box(self, pos):
+        y, x = pos[0], pos[1]
+        u = [y-1,x]
+        d = [y+1,x] 
+        l = [y,x-1]
+        r = [y,x+1]
+        if self.can_same:
+            boxes = [u, d, l, r, pos]
+        else:
+            boxes = [u, d, l, r]
+        return boxes
 
+    def random_path(self, T):
+        path = [[4,4]]
+        oldpos = path[0]
+        for t in range(T-1):
+            newpos = random.choice(self.neighbors_box(oldpos))
+            while self.transition(oldpos, newpos) == 0:
+                newpos = random.choice(self.neighbors_box(oldpos))
+            path.append(newpos)
+            oldpos = newpos
+        return path
+    
     def test_transition(self):
         iters = [5, 6, 5, 6]
         ranges = [range(x) for x in iters]
@@ -291,7 +314,8 @@ Minotaur = Enemy()
 TheGame = Game(Gary, Minotaur)
 
 
-opt_policies, u2 = TheGame.BW_induction(15)
-minautor_pos = [[4,4], [4,3], [3,3], [3,2], [3,1],[3,2], [3,1],[3,2], [3,1],[3,2], [3,1],[3,2], [3,1],[3,2], [3,1],[3,2], [3,1],[3,2], [3,1]]
+#opt_policies, u2 = TheGame.BW_induction(30)
 
-actions = TheGame.opt_policy(opt_policies, minautor_pos)
+minotaur_pos = Minotaur.random_path(30)
+
+actions = TheGame.opt_policy(opt_policies, minotaur_pos)
