@@ -99,61 +99,61 @@ class Ex1Enemy():
                (yn == y and xn == (x - 1)):
                 prob = 1.0/(4 + self.can_same)
             elif (yn == y and xn == x):
-                prob = 1 - (4.0/(4 + self.can_same))
+                prob = self.can_same/(4.0 + self.can_same)
         # EDGE POSITIONS
         elif x == 0 and y > 0 and y < (H-1):
             if (yn == (y + 1) and xn == x) or \
                (yn == (y - 1) and xn == x) or \
                (yn == y and xn == (x + 1)):
-                prob = 1.0/(4 + self.can_same)
+                prob = 1.0/(3 + self.can_same)
             elif (yn == y and xn == x):
-                prob = (1.0 + self.can_same)/(4 + self.can_same)
+                prob = self.can_same/(3.0 + self.can_same)
         elif x == (W-1) and y > 0 and y < (H-1):
             if (yn == (y + 1) and xn == x) or \
                (yn == (y - 1) and xn == x) or \
                (yn == y and xn == (x - 1)):
-                prob = 1.0/(4 + self.can_same)
+                prob = 1.0/(3 + self.can_same)
             elif (yn == y and xn == x):
-                prob = (1.0 + self.can_same)/(4 + self.can_same)
+                prob = self.can_same/(3.0 + self.can_same)
         elif y == 0 and x > 0 and x < (W-1):
             if (yn == (y + 1) and xn == x) or \
                (yn == y and xn == (x - 1)) or \
                (yn == y and xn == (x + 1)):
-                prob = 1.0/(4 + self.can_same)
+                prob = 1.0/(3 + self.can_same)
             elif (yn == y and xn == x):
-                prob = (1.0 + self.can_same)/(4 + self.can_same)
+                prob = self.can_same/(3.0 + self.can_same)
         elif y == (H-1) and x > 0 and x < (W-1):
             if (yn == (y - 1) and xn == x) or \
                (yn == y and xn == (x - 1)) or \
                (yn == y and xn == (x + 1)):
-                prob = 1.0/(4 + self.can_same)
+                prob = 1.0/(3 + self.can_same)
             elif (yn == y and xn == x):
-                prob = (1.0 + self.can_same)/(4 + self.can_same)
+                prob = self.can_same/(3.0 + self.can_same)
         # CORNER POSITIONS
         elif y==0 and x==0:
             if (yn == (y + 1) and xn == x) or \
                (yn == y and xn == (x + 1)):
-                prob = 1.0/(4 + self.can_same)
+                prob = 1.0/(2 + self.can_same)
             elif (yn == y and xn == x):
-                prob = (2.0 + self.can_same)/(4 + self.can_same)
+                prob = self.can_same/(2.0 + self.can_same)
         elif y==(H-1) and x==0:
             if (yn == (y - 1) and xn == x) or \
                (yn == y and xn == (x + 1)):
-                prob = 1.0/(4 + self.can_same)
+                prob = 1.0/(2 + self.can_same)
             elif (yn == y and xn == x):
-                prob = (2.0 + self.can_same)/(4 + self.can_same)
+                prob = self.can_same/(2.0 + self.can_same)
         elif y==0 and x==(W-1):
             if (yn == (y + 1) and xn == x) or \
                (yn == y and xn == (x - 1)):
-                prob = 1.0/(4 + self.can_same)
+                prob = 1.0/(2 + self.can_same)
             elif (yn == y and xn == x):
-                prob = (2.0 + self.can_same)/(4 + self.can_same)
+                prob = self.can_same/(2.0 + self.can_same)
         elif y==(H-1) and x==(W-1):
             if (yn == (y - 1) and xn == x) or \
                (yn == y and xn == (x - 1)):
-                prob = 1.0/(4 + self.can_same)
+                prob = 1.0/(2 + self.can_same)
             elif (yn == y and xn == x):
-                prob = (2.0 + self.can_same)/(4 + self.can_same)
+                prob = self.can_same/(2.0 + self.can_same)
         return prob
 
 
@@ -343,7 +343,7 @@ class Ex1Game(GameBase):
         self.H, self.W = 5, 6
         self.exit_pos = [4,4]
         self.r_not_escaped = -1.0
-        self.r_eaten = -1000.0
+        self.r_eaten = -1.0
         self.r_escaped = 0.0
         self.init_2()
 
@@ -405,6 +405,57 @@ class Ex1Game(GameBase):
         print(' ' + '\u203e'*8 + ' ')
         time.sleep(0.3)
 
+    def get_optimal(self, T):
+        v_opt = np.zeros((self.S_dim, T+1)) # optimal value
+        p_opt = np.zeros((self.S_dim, T)) # optimal policy
+        v_opt_t = np.ones(self.S_dim)*self.r_not_escaped # value for final time
+        v_opt[:,T] = v_opt_t
+        for t in reversed(range(T)):
+            max_val = np.zeros((self.S_dim, len(self.player.actions)))
+            for action in range(len(self.player.actions)):
+                # Pij*S for all S and Action=a
+                mult = np.matmul(np.diag(v_opt_t),self.pij[:,:,action])
+                temp = np.sum(mult,1)
+                max_val[:,action] = temp
+            v_optn_a = max_val + self.rewards
+            v_opt[:,t] = np.max(v_optn_a,1)
+            p_opt[:,t] = np.argmax(v_optn_a,1)
+        print(p_opt)
+        self.v_opt = v_opt
+        self.p_opt = p_opt
+
+    def simulate(self, T=None, verbose=True):
+        S = self.tostate(self.player.pos, self.enemy.pos) # initial state
+        if verbose:
+            self.display_board()
+        if T:
+            for t in range(T):
+                action = int(self.p_opt[S, t]) # get optimal action
+                one_hot = np.zeros(self.S_dim)
+                one_hot[S] = 1.0
+                # probability of each Sn given S,A
+                prob = np.matmul(one_hot,(self.pij[:,:,action]))
+                prob = prob/np.sum(prob)
+                S = np.random.choice(np.arange(self.S_dim), p=prob)
+                pos_p, pos_e = self.fromstate(S) # get new positions
+                # update positions
+                self.player.pos = pos_p
+                self.enemy.pos = pos_e
+                if verbose:
+                    self.display_board()
+        else:
+            while True:
+                action = self.player.actions[self.p_opt[init_state]]
+                one_hot = np.zeros(self.S_dim)
+                one_hot[S] = 1.0
+                prob = S*self.pij[:,:,action] # probability of each new state
+                S = np.random.choice(np.arange(self.S_dim), p=prob)
+                pos_p, pos_e = self.fromstate(S) # get new positions
+                # update positions
+                self.player.pos = pos_p
+                self.enemy.pos = pos_e
+                if verbose:
+                    self.display_board()
 
 class Ex2Game(GameBase):
     """docstring for Ex2Game"""
@@ -553,8 +604,11 @@ class Ex3Game(GameBase):
         time.sleep(0.3)
 
 
-BankRob = Ex2Game()
-BankRob.test_pij()
+T = 15
+MazeEscape = Ex1Game(True)
+MazeEscape.test_pij()
+MazeEscape.get_optimal(T)
+MazeEscape.simulate(T,True)
 
 '''
 def Ex1():
