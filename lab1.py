@@ -632,9 +632,10 @@ def Ex1():
                   .format(can_same, time, escaped/no_sims))
 
 T = 15
-MazeEscape = Ex1Game(True)
+can_same = True
+MazeEscape = Ex1Game(can_same)
 MazeEscape.get_optimal(T)
 MazeEscape.simulate(T)
 
-# doesnt seem to be quite working yet :(
-#Ex1()
+# !!! NOT WORKING YET :(
+Ex1()
