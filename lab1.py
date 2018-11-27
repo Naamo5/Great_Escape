@@ -445,7 +445,10 @@ class Ex1Game(GameBase):
             if verbose:
                 self.display_board()
             else:
-                pass # return reward
+                if t==T-1 or pos_p == pos_e:
+                    return 0.0
+                elif pos_p == self.exit_pos:
+                    return 1.0
 
     def display_board(self):
         vis_board = np.empty((self.H,self.W), dtype='str')
@@ -613,22 +616,25 @@ class Ex3Game(GameBase):
         time.sleep(0.3)
 
 
+def Ex1():
+    maxtime = 30 # highest time we wish to find policy for
+    no_sims = 100
+    for can_same in [False, True]:
+        for time in range(10, maxtime): # impossible to win for t < 10
+            MazeEscape = Ex1Game(time, can_same)
+            MazeEscape.get_optimal(time)
+            escaped = 0.0
+            for sim in range(no_sims):
+                MazeEscape.player.pos = [0,0]
+                MazeEscape.enemy.pos = [4,5]
+                escaped += MazeEscape.simulate(time,False)
+            print('can_same = {}, time = {}, success = {}'
+                  .format(can_same, time, escaped/no_sims))
+
 T = 15
 MazeEscape = Ex1Game(True)
 MazeEscape.get_optimal(T)
 MazeEscape.simulate(T)
 
-'''
-def Ex1():
-    maxtime = 30 # highest time we wish to find policy for
-    no_sims = 1000
-    for can_same in [True, False]:
-        for time in range(10, maxtime): # impossible to win for t < 10
-            MazeEscape = Ex1Game(time, can_same)
-            MazeEscape.get_optimal()
-            escaped = 0.0
-            for sim in range(no_sims):
-                escaped += MazeEscape.get_simulate(time)
-            print('can_same = {}, time = {}, success = {}'
-                  .format(can_same, time, escaped/no_sims))
-'''
+# doesnt seem to be quite working yet :(
+#Ex1()
