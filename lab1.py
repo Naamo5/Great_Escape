@@ -12,6 +12,7 @@ class PlayerBase():
                         'L': (0,-1),
                         'R': (0,1),
                         'S': (0,0)}
+        self.pos = [0,0]
 
     def test_transition(self, H, W):
         for y in range(H):
@@ -414,9 +415,7 @@ class Ex1Game(GameBase):
             max_val = np.zeros((self.S_dim, len(self.player.actions)))
             for action in range(len(self.player.actions)):
                 # Pij*S for all S and Action=a
-                v_opt_temp = v_opt[:,t]
-                v_opt_temp.shape = (self.S_dim,1)
-                mult = v_opt_temp*self.pij[:,:,action]
+                mult = v_opt[:,t].T*self.pij[:,:,action]
                 temp = np.sum(mult,1)
                 max_val[:,action] = temp
             v_optn_a = max_val + self.rewards
@@ -433,8 +432,8 @@ class Ex1Game(GameBase):
         for t in range(T):
             A = self.p_opt[S, t]
             S = self.one_step(S,A)
-            pos_p, pos_e = self.fromstate(S) # get new positions
-            self.player.pos, self.enemy.pos = pos_p, pos_e
+            # Update player & enemy positions
+            self.player.pos, self.enemy.pos = self.fromstate(S) 
             if verbose:
                 self.display_board()
             else:
@@ -585,37 +584,73 @@ class Ex3Game(GameBase):
             S = self.tostate([y_p,x_p],[y_e,x_e])
             if self.is_bank([y_p,x_p],[y_e,x_e]):
                 rewards[S] = self.r_bank
-            elif self.is_caught(posn_p,[y_e,x_e]):
+            elif self.is_caught([y_p,x_p],[y_e,x_e]):
                 rewards[S] = self.r_caught
-        self.rewards = rewards
+        self.R = rewards
 
-    def get_optimal(self, iters):
-        # Q LEARNING ALGORITHM / SARSA
+    def e_greedy(self, e, Qs):
         n_actions = len(self.player.actions)
-        Q = np.zeros(S_dim, n_actions) # init Q values
-        S = self.tostate(self.player.pos, self.enemy.pos)
+        is_greedy = np.random.choice([True,False],p=[1-e,e])
+        greedy = int(np.argmax(Qs))
+        other = list(range(n_actions))
+        other.remove(greedy)
+        non_greedy = random.choice(other)
+        return greedy if is_greedy else non_greedy
+
+    def get_optimal(self, iters, e=None):
+        # if e=None uses Q_learning, else uses SARSA
+        n_actions = len(self.player.actions)
+        Q = np.zeros((self.S_dim, n_actions)) # init Q values
+        init_state = self.tostate(self.player.pos, self.enemy.pos)
+        S = init_state
         for i in range(iters):
             # Set learning rate alpha
-            alpha = 0.1 # !!!TODO!!!!
-            # Select an action with equal probability
-            A = np.choice(range(n_actions),p=[1.0/n_actions]*n_actions)
-            # Perform 1 step of algorithm
-            Sn = self.one_step(S,A)
-            # Update Q value table
-            Q[S,A] = alpha*(R[Sn] + self.lamb*np.max(Q[Sn,:]) - Q[S,A])
-            # If bank robber is caught, reinitialise game
-            posn_p, posn_e = self.from_state(Sn)
+            alpha = 1.0/((i+1)**(2.0/3))
+            # SARSA
+            if e is not None:
+                A = self.e_greedy(e, Q[S,:])
+                # Perform 1 step of algorithm
+                Sn = self.one_step(S, A)
+                # Select Q[Sn,An] val with e_greedy
+                An = self.e_greedy(e, Q[Sn,:])
+                # Update Q value table
+                Q[S,A] += alpha*(self.R[Sn] + self.lamb*Q[Sn,An] - Q[S,A])
+            # Q-Learning with equal action selection
+            else:
+                # Select an action with equal probability
+                A = random.choice(range(n_actions))
+                # Perform 1 step of algorithm
+                Sn = self.one_step(S, A)
+                # Update Q value table
+                Q[S,A] += alpha*(self.R[Sn]+self.lamb*np.max(Q[Sn,:])-Q[S,A])
+                # If bank robber is caught, reinitialise game
+            posn_p, posn_e = self.fromstate(Sn)
             if self.is_caught(posn_p, posn_e):
                 self.player.pos = [0,0]
                 self.enemy.pos = [3,3]
                 S = self.tostate(self.player.pos, self.enemy.pos)
             else:
                 S = Sn
-        self.p_opt = np.max(Q,1)
+            if (i%10000 == 0):
+                print('iter*10,000 = {}, alpha = {:.5f}, Q(init,0) = {:.5f}'
+                      .format(i//10000, alpha, Q[init_state,0]))
+        self.p_opt = np.argmax(Q,1)
 
-    def simulate(self, verbose=False):
-        pass
-
+    def simulate(self, verbose=True):
+        rewards = 0.0
+        S = self.tostate(self.player.pos, self.enemy.pos) # initial state
+        if verbose:
+            self.display_board()
+        t = 0
+        while self.player.pos != self.enemy.pos:
+            A = self.p_opt[S]
+            S = self.one_step(S,A)
+            self.player.pos, self.enemy.pos = self.fromstate(S)
+            rewards += self.R[S]*(self.lamb**t)
+            t += 1
+            if verbose:
+                self.display_board()
+                print('discounted reward = {:.5f}'.format(rewards))
 
     def display_board(self):
         vis_board = np.empty((self.H,self.W), dtype='str')
@@ -639,7 +674,7 @@ def Ex1():
     no_sims = 100
     for can_same in [False, True]:
         for time in range(10, maxtime): # impossible to win for t < 10
-            MazeEscape = Ex1Game(time, can_same)
+            MazeEscape = Ex1Game(can_same)
             MazeEscape.get_optimal(time)
             escaped = 0.0
             for sim in range(no_sims):
@@ -648,3 +683,15 @@ def Ex1():
                 escaped += MazeEscape.simulate(time,False)
             print('can_same = {}, time = {}, success = {}'
                   .format(can_same, time, escaped/no_sims))
+
+e = 0.2
+iters = 1000000
+BankRob2 = Ex3Game()
+BankRob2.test_pij()
+# Q_Learning
+# BankRob2.get_optimal(iters)
+# BankRob2.simulate()
+
+# SARSA
+BankRob2.get_optimal(iters, e)
+BankRob2.simulate()
