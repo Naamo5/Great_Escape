@@ -3,6 +3,7 @@ import time
 import numpy as np
 from itertools import product
 import matplotlib.pyplot as plt
+from datetime import datetime
 
 class Game():
     """docstring for ClassName"""
@@ -89,7 +90,7 @@ class Game():
         else:
             vis_board[tuple(self.player.pos)] = 'P' # Player
             vis_board[tuple(self.enemy.pos)] = 'M' # Minotaur
-        print('╭' + '─'*5 +'┬' + '─'*11 + '╮') #╭─────────────────╮
+        print('┌' + '─'*5 +'┬' + '─'*11 + '┐') #╭─────────────────╮
         print('│ {} {} │ {} {}   {} {} │'.format(*vis_board[0,:])) #│
         print('│ {} {} │ {} {} │ {} {} │'.format(*vis_board[1,:]))
         print('│     │     ├─────┤')
@@ -98,7 +99,7 @@ class Game():
         print('│   ────────┬───  │')
         print('│ {} {}   {} {} │ {} {} │'.format(
             *vis_board[4,:]))
-        print('╰' + '─'*11 +'┴'+'─'*5+ '╯') #╰─────────────────╯
+        print('└' + '─'*11 +'┴'+'─'*5+ '┘') #╰─────────────────╯
         time.sleep(0.6)
 
     def BW_induction(self, time):
@@ -118,6 +119,36 @@ class Game():
             policy[:,t-1] = [np.argmax(utemp[s,:]) for s in range(self.S_dim)] #optimal policy for s1 at time-1-t
             u2[:,t-1] = np.copy(u1)
         return policy,u2
+        
+    def get_value_function(self, policy, lambd = 1.0-1.0/30.0):
+        R = [self.rewards[s,policy[s]] for s in range(self.S_dim)]
+        P = np.zeros((self.S_dim,self.S_dim))
+        for s1 in range(self.S_dim):
+            for s2 in range(self.S_dim):
+                P[s1,s2] = self.pij[s1,s2,policy[s1]]
+        v = np.linalg.solve(np.eye(self.S_dim)-lambd*P, R)
+        return v
+
+    def get_policy(self, v, lambd = 1.0-1.0/30.0):
+        policy = 5*np.ones(self.S_dim)
+        q_sa = np.zeros((self.S_dim,self.player.A_dim))
+        for a in range(self.player.A_dim):
+            q_sa[:,a] = self.rewards[:,a] + lambd*np.matmul(self.pij[:,:,a],v)
+        policy = [np.argmax(q_sa[s]) for s in range(self.S_dim)]
+        return policy
+
+    def policy_iteration(self, lambd = 1.0-1.0/30.0):
+        """ Policiy Iteration for an infinite horizon MDP problem """
+        policy = np.random.randint(0,self.player.A_dim, size=(self.S_dim))  # initialize a random policy
+        max_iter = 10000
+        for i in range(max_iter):
+            print(i)
+            value_function = self.get_value_function(policy)
+            new_policy = self.get_policy(value_function)
+            #if (np.all(policy == new_policy)):
+             #   break
+            policy = new_policy
+        return policy
  
     def opt_policy(self,policy, min_pos, verbose):
         """ Find the optimal policy for a given set of minautor positions """
@@ -171,6 +202,59 @@ class Game():
                     print(' |_|      \__,_| |_| |_|  \___|  \__,_|')
                     time.sleep(0.7)
         return False
+
+    def opt_policy_inf(self,policy, min_pos, verbose):
+        """ Find the optimal policy for a given set of minautor positions """
+        T=len(min_pos)
+        #T=np.random.geometric(1/30)
+        self.enemy.pos = min_pos[0]
+        self.player.pos = [0,0]
+        actions = policy[self.tostate(self.player.pos, self.enemy.pos)]
+        if verbose:
+            print("\n \n Time = 1")
+            self.display_board()
+        for t in range(1,T):
+            self.enemy.pos = min_pos[t]
+            self.player.pos = self.player.transition(self.player.pos,self.player.actions[int(actions)])
+            if self.enemy.pos == self.player.pos:
+                if verbose:
+                    print("\n \n Time = {}".format(t+1))
+                    self.display_board()
+                    print("\n \n Time = {}".format(t+2))
+                    print(' _____           _                  ')
+                    print('| ____|   __ _  | |_    ___   _ __  ')
+                    print('|  _|    / _  | | __|  / _ \ |  _ \ ')
+                    print('| |___  | (_| | | |_  |  __/ | | | |')
+                    print('|_____|  \__,_|  \__|  \___| |_| |_|')
+                    time.sleep(0.7)
+                return False
+            elif self.player.pos == self.exit_pos and self.enemy.pos != self.player.pos:
+                if verbose:
+                    print("\n \n Time = {}".format(t+1))
+                    self.display_board()
+                    print("\n \n Time = {}".format(t+2))
+                    print(' _____                                           _ ')
+                    print('| ____|  ___    ___    __ _   _ __     ___    __| |')
+                    print('|  _|   / __|  / __|  / _  | |  _ \   / _ \  / _  |')
+                    print('| |___  \__ \ | (__  | (_| | | |_) | |  __/ | (_| |')
+                    print('|_____| |___/  \___|  \__,_| | .__/   \___|  \__,_|')
+                    print('                             |_|                   ')
+                    time.sleep(0.7)
+                return True
+            if t<T:
+                actions = policy[self.tostate(self.player.pos, self.enemy.pos)]
+            if verbose:
+                    print("\n \n Time = {}".format(t+1))
+                    self.display_board()
+        if verbose:
+                    print("\n \n Time = {}".format(t+2))
+                    print('  _____           _   _              _ ')
+                    print(' |  ___|   __ _  (_) | |   ___    __| |')
+                    print(' | |_     / _` | | | | |  / _ \  / _` |')
+                    print(' |  _|   | (_| | | | | | |  __/ | (_| |')
+                    print(' |_|      \__,_| |_| |_|  \___|  \__,_|')
+                    time.sleep(0.7)
+        return False
         
     def proba(self, T, verbose):
         policies = self.BW_induction(T)[0]
@@ -179,6 +263,17 @@ class Game():
         for i in range(iter):
             minotaur_pos = Minotaur.random_path(T)
             if TheGame.opt_policy(policies, minotaur_pos, verbose):
+                win = win +1
+        return win/iter
+
+    def proba2(self, policy, verbose):
+        #policy = self.policy_iteration(self)
+        iter = 10000
+        win=0
+        for i in range(iter):
+            T=np.random.geometric(1/30)
+            minotaur_pos = Minotaur.random_path(T)
+            if TheGame.opt_policy_inf(policy, minotaur_pos, verbose):
                 win = win +1
         return win/iter
 
@@ -360,20 +455,31 @@ Gary = Player()
 Minotaur = Enemy(True)
 TheGame = Game(Gary, Minotaur)
 
-p,u2 = TheGame.BW_induction(11)
-
 #min_pos = [[4,4],[3,4],[3,3],[3,4], [3,3],[3,4], [3,3],[3,4], [3,3],[3,4], [3,3],[3,4], [3,3],[3,4], [3,3]]
 #TheGame.opt_policy(p, min_pos, True)
 
+#print(TheGame.get_value_function(policy))
+#policy,u2 = TheGame.BW_induction(30)
 
-# Plot the graphs
+#
+
+"""
+T=np.random.geometric(1/30)
+
+min_pos = Minotaur.random_path(T)
+
+TheGame.opt_policy_inf(policy2, min_pos, True)
+
+
+# Plot the graphs for 1.2
+
 
 proba=[]
-Tmin = 2
-Tmax = 40
+Tmin = 14
+Tmax = 15
 for t in range(Tmin,Tmax+1):
     print(t)
-    proba.append(TheGame.proba(t, False))
+    proba.append(TheGame.proba(t, True))
 
 if Minotaur.can_same:
     plt.plot(np.arange(Tmin,Tmax+1),proba)
@@ -392,5 +498,18 @@ else:
     plt.xlabel(r'Time available $T$')
     plt.ylabel(r'Probability to escape the maze $P_T ( \{ Escaped \} )$')
     plt.savefig('pro_cannot.ps')
+"""
 
 
+"""
+# Proba escape 1.3
+policy = TheGame.policy_iteration()
+
+
+start=datetime.now()
+proba2 = TheGame.proba2(policy,False)
+print(datetime.now()-start)
+
+#proba_can = 0.6132
+#proba_cannot = 
+"""
