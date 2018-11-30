@@ -6,13 +6,13 @@ from itertools import product
 class PlayerBase():
     """docstring for ClassName"""
     def __init__(self):
-        self.pos = None
         self.actions = ['U','D','L','R','S']
         self.actdict = {'U': (-1,0),
                         'D': (1,0),
                         'L': (0,-1),
                         'R': (0,1),
                         'S': (0,0)}
+        self.pos = [0,0]
 
     def test_transition(self, H, W):
         for y in range(H):
@@ -74,7 +74,6 @@ class Ex1Player(PlayerBase):
 class Ex1Enemy():
     """docstring  for ClassName"""
     def __init__(self, can_same=False):
-        self.pos = [4,5]
         self.can_same = can_same
 
     def test_transition(self, H, W):
@@ -240,18 +239,13 @@ class Ex2Enemy():
 
 class GameBase():
     """docstring for ClassName"""
-    def __init__(self, can_same=False, lamb=1.0):
+    def __init__(self, can_same=False):
         self.can_same = can_same
-        self.lamb = lamb # lambda, the discount factor
 
     def init_2(self):
         self.S_dim = (self.W*self.H)**2
-        self.init_v = np.zeros(self.S_dim) # initial state values
-        self.init_p = np.ones((self.S_dim,len(self.player.actions))) * \
-                      1.0/len(self.player.actions) # initial policy
         self.calc_pij()
         self.calc_rewards()
-        self.lambvec = np.ones(self.S_dim)*self.lamb
 
     def tostate(self, pos_p, pos_e):
         return self.H*self.W*(pos_p[0]*self.W + pos_p[1]) + \
@@ -331,14 +325,10 @@ class GameBase():
         print('fraction of non zero elements = {:.5f}\n\n'
               .format(non_zero_frac))
 
-    def one_step(self, S, t=None):
-        # get optimal action
-        action = self.p_opt[S, t] if t is not None else self.p_opt[S]
-        one_hot = np.zeros(self.S_dim)
-        one_hot[S] = 1.0
+    def one_step(self, S, A):
         # probability of each Sn given S,A
-        prob = np.matmul(one_hot,(self.pij[:,:,action]))
-        prob = prob/np.sum(prob)
+        prob = self.pij[S,:,A]
+        prob = prob/np.sum(prob) # in case of sum(prob) slightly > 1
         S = np.random.choice(np.arange(self.S_dim), p=prob)
         return S
 
@@ -349,6 +339,7 @@ class Ex1Game(GameBase):
         super(Ex1Game, self).__init__(*args, **kwargs)
         self.player = Ex1Player()
         self.enemy = Ex1Enemy(self.can_same)
+        self.enemy.pos = [4,5]
         self.H, self.W = 5, 6
         self.exit_pos = [4,4]
         self.r_not_escaped = -1.0
@@ -424,7 +415,7 @@ class Ex1Game(GameBase):
             max_val = np.zeros((self.S_dim, len(self.player.actions)))
             for action in range(len(self.player.actions)):
                 # Pij*S for all S and Action=a
-                mult = np.matmul(np.diag(v_opt[:,t+1]),self.pij[:,:,action])
+                mult = v_opt[:,t].T*self.pij[:,:,action]
                 temp = np.sum(mult,1)
                 max_val[:,action] = temp
             v_optn_a = max_val + self.rewards
@@ -439,9 +430,10 @@ class Ex1Game(GameBase):
         if verbose:
             self.display_board()
         for t in range(T):
-            S = self.one_step(S,t)
-            pos_p, pos_e = self.fromstate(S) # get new positions
-            self.player.pos, self.enemy.pos = pos_p, pos_e
+            A = self.p_opt[S, t]
+            S = self.one_step(S,A)
+            # Update player & enemy positions
+            self.player.pos, self.enemy.pos = self.fromstate(S) 
             if verbose:
                 self.display_board()
             else:
@@ -553,6 +545,7 @@ class Ex3Game(GameBase):
         self.bank_pos = [1,1]
         self.r_bank = 1.0
         self.r_caught = -10.0
+        self.lamb = 0.8
         self.init_2()
 
     def is_bank(self, pos_p, pos_e):
@@ -584,19 +577,80 @@ class Ex3Game(GameBase):
         self.pij = pij
 
     def calc_rewards(self):
-        rewards = np.zeros((self.S_dim,len(self.player.actions)))
+        rewards = np.zeros(self.S_dim)
         iters = [self.H, self.W, self.H, self.W]
         ranges = [range(x) for x in iters]
         for y_p, x_p, y_e, x_e in product(*ranges):
-            for idx, action in enumerate(self.player.actions):
-                S = self.tostate([y_p,x_p],[y_e,x_e])
-                posn_p = self.player.transition([y_p,x_p], action, 
-                                                    self.H, self.W)
-                if self.is_bank(posn_p,[y_e,x_e]):
-                    rewards[S, idx] = self.r_bank
-                elif self.is_caught(posn_p,[y_e,x_e]):
-                    rewards[S, idx] = self.r_caught
-        self.rewards = rewards
+            S = self.tostate([y_p,x_p],[y_e,x_e])
+            if self.is_bank([y_p,x_p],[y_e,x_e]):
+                rewards[S] = self.r_bank
+            elif self.is_caught([y_p,x_p],[y_e,x_e]):
+                rewards[S] = self.r_caught
+        self.R = rewards
+
+    def e_greedy(self, e, Qs):
+        n_actions = len(self.player.actions)
+        is_greedy = np.random.choice([True,False],p=[1-e,e])
+        greedy = int(np.argmax(Qs))
+        other = list(range(n_actions))
+        other.remove(greedy)
+        non_greedy = random.choice(other)
+        return greedy if is_greedy else non_greedy
+
+    def get_optimal(self, iters, e=None):
+        # if e=None uses Q_learning, else uses SARSA
+        n_actions = len(self.player.actions)
+        Q = np.zeros((self.S_dim, n_actions)) # init Q values
+        init_state = self.tostate(self.player.pos, self.enemy.pos)
+        S = init_state
+        for i in range(iters):
+            # Set learning rate alpha
+            alpha = 1.0/((i+1)**(2.0/3))
+            # SARSA
+            if e is not None:
+                A = self.e_greedy(e, Q[S,:])
+                # Perform 1 step of algorithm
+                Sn = self.one_step(S, A)
+                # Select Q[Sn,An] val with e_greedy
+                An = self.e_greedy(e, Q[Sn,:])
+                # Update Q value table
+                Q[S,A] += alpha*(self.R[Sn] + self.lamb*Q[Sn,An] - Q[S,A])
+            # Q-Learning with equal action selection
+            else:
+                # Select an action with equal probability
+                A = random.choice(range(n_actions))
+                # Perform 1 step of algorithm
+                Sn = self.one_step(S, A)
+                # Update Q value table
+                Q[S,A] += alpha*(self.R[Sn]+self.lamb*np.max(Q[Sn,:])-Q[S,A])
+                # If bank robber is caught, reinitialise game
+            posn_p, posn_e = self.fromstate(Sn)
+            if self.is_caught(posn_p, posn_e):
+                self.player.pos = [0,0]
+                self.enemy.pos = [3,3]
+                S = self.tostate(self.player.pos, self.enemy.pos)
+            else:
+                S = Sn
+            if (i%10000 == 0):
+                print('iter*10,000 = {}, alpha = {:.5f}, Q(init,0) = {:.5f}'
+                      .format(i//10000, alpha, Q[init_state,0]))
+        self.p_opt = np.argmax(Q,1)
+
+    def simulate(self, verbose=True):
+        rewards = 0.0
+        S = self.tostate(self.player.pos, self.enemy.pos) # initial state
+        if verbose:
+            self.display_board()
+        t = 0
+        while self.player.pos != self.enemy.pos:
+            A = self.p_opt[S]
+            S = self.one_step(S,A)
+            self.player.pos, self.enemy.pos = self.fromstate(S)
+            rewards += self.R[S]*(self.lamb**t)
+            t += 1
+            if verbose:
+                self.display_board()
+                print('discounted reward = {:.5f}'.format(rewards))
 
     def display_board(self):
         vis_board = np.empty((self.H,self.W), dtype='str')
@@ -615,13 +669,12 @@ class Ex3Game(GameBase):
         print(' ' + '\u203e'*4 + ' ')
         time.sleep(0.3)
 
-
 def Ex1():
     maxtime = 30 # highest time we wish to find policy for
     no_sims = 100
     for can_same in [False, True]:
         for time in range(10, maxtime): # impossible to win for t < 10
-            MazeEscape = Ex1Game(time, can_same)
+            MazeEscape = Ex1Game(can_same)
             MazeEscape.get_optimal(time)
             escaped = 0.0
             for sim in range(no_sims):
@@ -631,11 +684,14 @@ def Ex1():
             print('can_same = {}, time = {}, success = {}'
                   .format(can_same, time, escaped/no_sims))
 
-T = 15
-can_same = True
-MazeEscape = Ex1Game(can_same)
-MazeEscape.get_optimal(T)
-MazeEscape.simulate(T)
+e = 0.2
+iters = 1000000
+BankRob2 = Ex3Game()
+BankRob2.test_pij()
+# Q_Learning
+# BankRob2.get_optimal(iters)
+# BankRob2.simulate()
 
-# !!! NOT WORKING YET :(
-Ex1()
+# SARSA
+BankRob2.get_optimal(iters, e)
+BankRob2.simulate()
