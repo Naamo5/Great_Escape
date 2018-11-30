@@ -1,6 +1,7 @@
 import random
 import time
 import numpy as np
+import matplotlib.pyplot as plt
 from itertools import product
 
 class PlayerBase():
@@ -591,7 +592,9 @@ class Ex3Game(GameBase):
     def e_greedy(self, e, Qs):
         n_actions = len(self.player.actions)
         is_greedy = np.random.choice([True,False],p=[1-e,e])
-        greedy = int(np.argmax(Qs))
+        # in case multiple actions are greediest, will choose random one
+        greedy = np.argwhere(Qs==np.amax(Qs)).flatten().tolist()
+        greedy = random.choice(greedy)
         other = list(range(n_actions))
         other.remove(greedy)
         non_greedy = random.choice(other)
@@ -601,28 +604,37 @@ class Ex3Game(GameBase):
         # if e=None uses Q_learning, else uses SARSA
         n_actions = len(self.player.actions)
         Q = np.zeros((self.S_dim, n_actions)) # init Q values
+        alphas = np.zeros((self.S_dim, n_actions))
         init_state = self.tostate(self.player.pos, self.enemy.pos)
         S = init_state
-        for i in range(iters):
+        q_val = []
+        for i in range(iters+1):
             # Set learning rate alpha
             alpha = 1.0/((i+1)**(2.0/3))
             # SARSA
             if e is not None:
+                # Select A based on e-greedy
                 A = self.e_greedy(e, Q[S,:])
+                # Update step size param
+                alphas[S,A] += 1
+                alpha = 1.0/((alphas[S,A])**(2.0/3))
                 # Perform 1 step of algorithm
                 Sn = self.one_step(S, A)
-                # Select Q[Sn,An] val with e_greedy
+                # Select An val with e_greedy
                 An = self.e_greedy(e, Q[Sn,:])
                 # Update Q value table
-                Q[S,A] += alpha*(self.R[Sn] + self.lamb*Q[Sn,An] - Q[S,A])
+                Q[S,A] += alpha*(self.R[Sn] + (self.lamb*Q[Sn,An]) - Q[S,A])
             # Q-Learning with equal action selection
             else:
                 # Select an action with equal probability
                 A = random.choice(range(n_actions))
+                # Update step size param
+                alphas[S,A] += 1
+                alpha = 1.0/((alphas[S,A])**(2.0/3))
                 # Perform 1 step of algorithm
                 Sn = self.one_step(S, A)
                 # Update Q value table
-                Q[S,A] += alpha*(self.R[Sn]+self.lamb*np.max(Q[Sn,:])-Q[S,A])
+                Q[S,A] += alpha*(self.R[Sn]+(self.lamb*np.max(Q[Sn,:]))-Q[S,A])
                 # If bank robber is caught, reinitialise game
             posn_p, posn_e = self.fromstate(Sn)
             if self.is_caught(posn_p, posn_e):
@@ -632,9 +644,11 @@ class Ex3Game(GameBase):
             else:
                 S = Sn
             if (i%10000 == 0):
-                print('iter*10,000 = {}, alpha = {:.5f}, Q(init,0) = {:.5f}'
-                      .format(i//10000, alpha, Q[init_state,0]))
+                q_val.append(np.max(Q[init_state,:]))
+                print('iter*10,000 = {}, alpha = {:.5f}, Q(init,D) = {:.5f}'
+                      .format(i//10000, alpha, Q[init_state,1]))
         self.p_opt = np.argmax(Q,1)
+        return q_val
 
     def simulate(self, verbose=True):
         rewards = 0.0
@@ -684,14 +698,32 @@ def Ex1():
             print('can_same = {}, time = {}, success = {}'
                   .format(can_same, time, escaped/no_sims))
 
-e = 0.2
-iters = 1000000
-BankRob2 = Ex3Game()
-BankRob2.test_pij()
-# Q_Learning
-# BankRob2.get_optimal(iters)
-# BankRob2.simulate()
+def Ex3a():
+    iters = 10*1000*1000
+    BankRob2 = Ex3Game()
+    BankRob2.test_pij()
+    # Q_Learning
+    q_val = BankRob2.get_optimal(iters)
+    plt.plot(np.arange(len(q_val))*10000,q_val)
+    plt.title("Convergence for Q_Learning")
+    plt.xlabel('iters')
+    plt.ylabel('max(Q(S=initial, A)')
+    plt.savefig('Q_learning_max_{}M_iters.jpg'.format(iters//1000000))
+    BankRob2.simulate()
 
-# SARSA
-BankRob2.get_optimal(iters, e)
-BankRob2.simulate()
+def Ex3b():
+    iters = 1*1000*1000
+    BankRob2 = Ex3Game()
+    BankRob2.test_pij()
+    # Q_Learning
+    e_values = [x*0.1 for x in range(11)]
+    plt.title("Convergence for SARSA")
+    plt.xlabel('iters')
+    plt.ylabel('max(Q(S=initial, A)')
+    for e in e_values:
+        q_val = BankRob2.get_optimal(iters, e)
+        plt.plot(np.arange(len(q_val))*10000,q_val)
+    plt.legend(['e = {:.1f}'.format(e) for e in e_values], loc='lower right')  
+    plt.savefig('SARSA_max_{}M_iters.jpg'.format(iters//1000000))
+
+Ex3a()
